@@ -1,11 +1,13 @@
 package neko_log
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"runtime"
+	"time"
 
 	"github.com/matsuridayo/libneko/neko_common"
 	"github.com/matsuridayo/libneko/syscallw"
@@ -68,9 +70,9 @@ func SetupLog(maxSize int, path string) (err error) {
 	} else {
 		LogWriter.writers = []io.Writer{os.Stdout, f}
 	}
-	// setup std log
-	log.SetFlags(log.LstdFlags | log.LUTC)
-	log.SetOutput(LogWriter)
+	// setup std log — format HI-style: [2026-10-12 08:35:28]
+	log.SetFlags(0)
+	log.SetOutput(&timestampWriter{inner: LogWriter})
 
 	return
 }
@@ -122,4 +124,27 @@ func (w *logWriter) Close() error {
 		}
 	}
 	return nil
+}
+
+// timestampWriter: prefix setiap baris log dengan [YYYY-MM-DD HH:MM:SS] (gaya HTTP Injector)
+type timestampWriter struct {
+	inner io.Writer
+}
+
+func (w *timestampWriter) Write(p []byte) (int, error) {
+	ts := time.Now().Format("[2006-01-02 15:04:05] ")
+	var out []byte
+	for _, line := range bytes.Split(p, []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+		out = append(out, []byte(ts)...)
+		out = append(out, line...)
+		out = append(out, '\n')
+	}
+	if len(out) == 0 {
+		return len(p), nil
+	}
+	_, err := w.inner.Write(out)
+	return len(p), err
 }
